@@ -22,20 +22,26 @@ app.post('/heartbeat', (req, res) => {
   cameras[CameraId] = {
     id: CameraId,
     plate: Code,
-    timestamp: new Date().toISOString(),
+    timestamp: EventDateTime, // Use EventDateTime directly (not new Date().toISOString())
     lastSeen: Date.now()
   };
 
   res.status(200).json({ CameraId, Code, EventDateTime });
 });
 
-// GET / - Return active cameras
+// GET / - Return only active cameras in AI Studio compatible format
 app.get('/', (req, res) => {
   const now = Date.now();
-  const activeCameras = Object.values(cameras).filter(
-    cam => now - cam.lastSeen < EXPIRY_MS
-  );
-  res.json(activeCameras);
+
+  const activeCameras = Object.values(cameras)
+    .filter(cam => now - cam.lastSeen < EXPIRY_MS)
+    .map(cam => ({
+      id: cam.id,
+      plate: cam.plate,
+      timestamp: cam.timestamp
+    }));
+
+  res.status(200).json(activeCameras);
 });
 
 app.listen(port, () => {
