@@ -103,7 +103,7 @@ app.get('/viewer', (req, res) => {
               <td>${e.id}</td>
               <td>${e.plate}</td>
               <td>${e.timestamp}</td>
-              <td>${e.image ? `<img src="${e.image}" alt="Plate Image">` : 'N/A'}</td>
+              <td>${e.image ? `<img src="${e.image.startsWith('data:image') ? e.image : e.image || ''}" alt="Plate image" onerror="this.style.display='none';">` : 'N/A'}</td>
             </tr>
           `).join('')}
         </tbody>
