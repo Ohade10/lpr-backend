@@ -7,15 +7,14 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Camera health map
+// In-memory store
 let cameras = {};
-const EXPIRY_MS = 30000; // 30 seconds
-
-// In-memory transaction log
 let transactions = [];
+
+const EXPIRY_MS = 30000;
 const MAX_TRANSACTIONS = 100;
 
-// POST /heartbeat - receive camera event
+// POST /heartbeat - incoming LPR event
 app.post('/heartbeat', (req, res) => {
   const { CameraId, Code, EventDateTime } = req.body;
 
@@ -23,7 +22,6 @@ app.post('/heartbeat', (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  // Update camera live status
   cameras[CameraId] = {
     id: CameraId,
     plate: Code,
@@ -31,33 +29,32 @@ app.post('/heartbeat', (req, res) => {
     lastSeen: Date.now()
   };
 
-  // Add to transaction log
   transactions.unshift({
     time: new Date().toISOString(),
     cameraId: CameraId,
     plate: Code,
     rawEventTime: EventDateTime
   });
+
   if (transactions.length > MAX_TRANSACTIONS) transactions.pop();
 
   res.status(200).json({ CameraId, Code, EventDateTime });
 });
 
-// GET / - for Google AI Studio
+// GET / - polled by Google AI Studio
 app.get('/', (req, res) => {
   const now = Date.now();
-  const activeCameras = Object.values(cameras)
+  const active = Object.values(cameras)
     .filter(cam => now - cam.lastSeen < EXPIRY_MS)
     .map(cam => ({
       id: cam.id,
       plate: cam.plate,
       timestamp: cam.timestamp
     }));
-
-  res.status(200).json(activeCameras);
+  res.status(200).json(active);
 });
 
-// GET /viewer - live transaction viewer
+// GET /viewer - live transaction viewer with auto-refresh
 app.get('/viewer', (req, res) => {
   const html = `
     <!DOCTYPE html>
@@ -65,6 +62,7 @@ app.get('/viewer', (req, res) => {
     <head>
       <title>LPR Heartbeat Viewer</title>
       <meta charset="UTF-8">
+      <meta http-equiv="refresh" content="10">
       <style>
         body { font-family: sans-serif; background: #f4f4f4; padding: 20px; }
         h1 { color: #333; }
@@ -76,7 +74,7 @@ app.get('/viewer', (req, res) => {
     </head>
     <body>
       <h1>📸 Live LPR Heartbeats</h1>
-      <p>Last ${transactions.length} events received.</p>
+      <p>Auto-refresh every 10 seconds. Showing last ${transactions.length} transactions.</p>
       <table>
         <thead>
           <tr>
