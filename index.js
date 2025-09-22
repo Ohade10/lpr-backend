@@ -7,10 +7,10 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-let cameras = {};
 const EXPIRY_MS = 30000; // 30 seconds
+let events = []; // ⬅️ store all LPR events
 
-// POST /heartbeat - Receive events
+// POST /heartbeat - Add new event
 app.post('/heartbeat', (req, res) => {
   const { CameraId, Code, EventDateTime, plateImageUrl } = req.body;
 
@@ -18,32 +18,36 @@ app.post('/heartbeat', (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  cameras[CameraId] = {
+  const event = {
     id: CameraId,
     plate: Code,
     timestamp: EventDateTime,
-    lastSeen: Date.now(),
-    image: plateImageUrl || null
+    image: plateImageUrl || null,
+    receivedAt: Date.now()
   };
 
+  events.push(event);
+
+  console.log(`[Heartbeat] ${CameraId} | Plate: ${Code} | Image: ${plateImageUrl || 'No image'}`);
   res.status(200).json({ success: true });
 });
 
-// GET / - Returns active camera transactions
+// GET / - Return only recent events for AI Studio
 app.get('/', (req, res) => {
   const now = Date.now();
-  const activeCameras = Object.values(cameras).filter(
-    cam => now - cam.lastSeen < EXPIRY_MS
-  );
-  res.json(activeCameras);
+  const recent = events.filter(e => now - e.receivedAt < EXPIRY_MS);
+  // Return only one entry per unique CameraId
+  const uniqueByCamera = {};
+  recent.forEach(e => {
+    uniqueByCamera[e.id] = e;
+  });
+  res.json(Object.values(uniqueByCamera));
 });
 
-// GET /viewer - Auto-refreshing transaction viewer
+// GET /viewer - HTML page to see all events
 app.get('/viewer', (req, res) => {
   const now = Date.now();
-  const activeCameras = Object.values(cameras).filter(
-    cam => now - cam.lastSeen < EXPIRY_MS
-  );
+  const recent = events.filter(e => now - e.receivedAt < EXPIRY_MS);
 
   const html = `
     <html>
@@ -51,41 +55,36 @@ app.get('/viewer', (req, res) => {
         <title>LPR Viewer</title>
         <meta http-equiv="refresh" content="5" />
         <style>
-          body { font-family: Arial, sans-serif; background: #111; color: #fff; padding: 20px; }
-          h1 { color: #0ff; }
+          body { font-family: Arial; background: #111; color: #eee; padding: 20px; }
           table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th, td { padding: 10px; border: 1px solid #444; text-align: left; }
-          img { max-width: 250px; height: auto; border: 1px solid #666; }
+          th, td { border: 1px solid #444; padding: 10px; text-align: left; }
+          img { max-width: 250px; height: auto; }
         </style>
       </head>
       <body>
-        <h1>📸 Active LPR Events (last 30s)</h1>
+        <h1>📸 All Recent LPR Events (Last 30s)</h1>
         <table>
-          <thead>
-            <tr>
-              <th>Camera ID</th>
-              <th>Plate</th>
-              <th>Timestamp</th>
-              <th>Plate Image</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${activeCameras
-              .map(
-                cam => `
-                <tr>
-                  <td>${cam.id}</td>
-                  <td>${cam.plate}</td>
-                  <td>${new Date(cam.timestamp).toLocaleString()}</td>
-                  <td>${
-                    cam.image
-                      ? `<img src="${cam.image}" alt="Plate image for ${cam.plate}" />`
-                      : '—'
-                  }</td>
-                </tr>`
-              )
-              .join('')}
-          </tbody>
+          <tr>
+            <th>Camera ID</th>
+            <th>Plate</th>
+            <th>Timestamp</th>
+            <th>Plate Image</th>
+          </tr>
+          ${recent
+            .map(event => `
+              <tr>
+                <td>${event.id}</td>
+                <td>${event.plate}</td>
+                <td>${new Date(event.timestamp).toLocaleString()}</td>
+                <td>
+                  ${event.image
+                    ? `<img src="${event.image}" alt="Plate image" onerror="this.onerror=null;this.src='https://via.placeholder.com/200x80?text=Invalid+Image';">`
+                    : '<em>No image provided</em>'
+                  }
+                </td>
+              </tr>
+            `)
+            .join('')}
         </table>
       </body>
     </html>
@@ -95,5 +94,5 @@ app.get('/viewer', (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`🚀 LPR backend running at http://localhost:${port}`);
+  console.log(`🚦 LPR backend listening on port ${port}`);
 });
