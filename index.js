@@ -1,63 +1,87 @@
-// index.js - Full backend code with CodeConfidence + Base64 image + 50-row history + Socket updates
-
-const express = require('express');
-const cors = require('cors');
-const http = require('http');
-const { Server } = require('socket.io');
+const express = require("express");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const axios = require("axios");
+require("dotenv").config();
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(bodyParser.json());
 
-let cameras = [];
-const EXPIRY_MS = 30000;
+// Health check endpoint
+app.get("/ping", (req, res) => {
+  res.send("pong");
+});
 
-// POST /heartbeat - Camera sends plate data
-app.post('/heartbeat', (req, res) => {
-  const { CameraId, Code, EventDateTime, PlateImageBase64, CodeConfidence } = req.body;
+// Summarization endpoint
+app.post("/summarize", async (req, res) => {
+  const { text } = req.body;
 
-  if (!CameraId || !Code || !EventDateTime) {
-    return res.status(400).json({ error: 'Missing required fields' });
+  if (!text) {
+    return res.status(400).json({ error: "No text provided." });
   }
 
-  const entry = {
-    id: CameraId,
-    plate: Code,
-    timestamp: EventDateTime,
-    image: PlateImageBase64,
-    confidence: CodeConfidence || 'N/A',
-    lastSeen: Date.now()
+  try {
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "Summarize the following email into a short, clear overview."
+          },
+          {
+            role: "user",
+            content: text
+          }
+        ],
+        temperature: 0.5,
+        max_tokens: 300
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    const summary = response.data.choices[0].message.content.trim();
+    res.json({ summary });
+  } catch (error) {
+    console.error("OpenAI API error:", error.response?.data || error.message);
+    res.status(500).json({ error: "Failed to summarize." });
+  }
+});
+
+// Example endpoint returning structured camera event data
+app.post("/camera-event", (req, res) => {
+  const {
+    CameraId,
+    Code,
+    EventDateTime,
+    CodeConfidence,
+    PlateImageBase64,
+    VehicleMake,
+    CarColor
+  } = req.body;
+
+  const response = {
+    CameraId: CameraId || "Unknown",
+    Code: Code || "Unknown",
+    EventDateTime: EventDateTime || "Unknown",
+    CodeConfidence: CodeConfidence || 0,
+    PlateImageBase64: PlateImageBase64 || "",
+    VehicleMake: VehicleMake || "Unavailable",
+    CarColor: CarColor || "Unavailable"
   };
 
-  cameras.unshift(entry);
-  if (cameras.length > 50) cameras.pop();
-
-  io.emit('cameraUpdate', cameras);
-  res.status(200).json({ success: true });
+  res.json(response);
 });
 
-// GET / - Return last 50 active rows
-app.get('/', (req, res) => {
-  const now = Date.now();
-  const active = cameras.filter(c => now - c.lastSeen < EXPIRY_MS);
-  res.json(active);
-});
-
-// Serve viewer
-app.get('/viewer', (req, res) => {
-  res.sendFile(__dirname + '/viewer.html');
-});
-
-// WebSocket connection
-io.on('connection', (socket) => {
-  console.log('Client connected');
-  socket.emit('cameraUpdate', cameras);
-});
-
-server.listen(port, () => {
-  console.log(`LPR backend running on http://localhost:${port}`);
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
