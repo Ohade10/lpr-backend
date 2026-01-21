@@ -73,6 +73,7 @@ function normalizeEvent(body) {
     EventDateTime,
     CodeConfidence,
     PlateImageBase64,
+    OverviewImageBase64,
     VehicleMake,
     CarColor
   } = body || {};
@@ -84,6 +85,7 @@ function normalizeEvent(body) {
     EventDateTime,
     CodeConfidence: CodeConfidence ?? null,
     PlateImageBase64: PlateImageBase64 ?? null,
+    OverviewImageBase64: OverviewImageBase64 ?? null,
     VehicleMake: VehicleMake ?? null,
     CarColor: CarColor ?? null,
     receivedAt: new Date().toISOString()
