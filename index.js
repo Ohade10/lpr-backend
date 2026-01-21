@@ -73,7 +73,7 @@ function normalizeEvent(body) {
     EventDateTime,
     CodeConfidence,
     PlateImageBase64,
-    OverviewImageBase64,
+    ImageBase64,
     VehicleMake,
     CarColor
   } = body || {};
@@ -85,7 +85,7 @@ function normalizeEvent(body) {
     EventDateTime,
     CodeConfidence: CodeConfidence ?? null,
     PlateImageBase64: PlateImageBase64 ?? null,
-    OverviewImageBase64: OverviewImageBase64 ?? null,
+    ImageBase64: ImageBase64 ?? null,
     VehicleMake: VehicleMake ?? null,
     CarColor: CarColor ?? null,
     receivedAt: new Date().toISOString()
@@ -119,6 +119,12 @@ app.get("/", (req, res) => {
 // Main ingest endpoint
 app.post("/events", (req, res) => {
   const event = normalizeEvent(req.body);
+
+  console.log("Received event", {
+    CameraId: event.CameraId,
+    HasPlateImage: !!event.PlateImageBase64,
+    HasImageBase64: !!event.ImageBase64
+  });
 
   if (!validateRequired(event)) {
     return res.status(400).json({
